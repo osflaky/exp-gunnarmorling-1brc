@@ -1,0 +1,76 @@
+#
+#  Copyright 2023 The original authors
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+
+name: Build
+
+on:
+  # Enable manual re-run
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: macos-latest
+          arch: arm64
+          runner: macos-latest
+          expander_leg: macos-latest--arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+    - name: 'Check out repository'
+      uses: actions/checkout@v2
+      with:
+        submodules: 'true'
+
+    - name: 'Cache Maven packages'
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-${{ runner.arch }}-m2-${{ hashFiles('**/pom.xml') 
+          }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-m2
+
+    - name: 'Setup Java 21'
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+
+    - name: 'Setup Java 22 for Java 22 submissions'
+      if: ${{ 
+        hashFiles(format('src/main/java-22/dev/morling/onebrc/CalculateAverage_{0}.java',
+        github.event.pull_request.user.login || '')) != '' }}
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '22'
+
+    - name: 'Build project'
+      shell: bash
+      run: |
+        ./mvnw --version
+        ./mvnw -B clean verify -Pci
+
+    - name: 'Test submission'
+      shell: bash
+      run: |
+        ./test_ci.sh ${{ github.event.pull_request.user.login }}
+      if: github.event_name == 'pull_request'
+    name: build [${{ matrix.expander_leg }}]
+    timeout-minutes: 150
